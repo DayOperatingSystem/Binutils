@@ -1,0 +1,72 @@
+#!/bin/sh
+
+export TARGET=i686-pc-dayos
+export PREFIX=$PWD/rootsys
+export PATH=$PATH:$PREFIX
+export BUILD_PATH=/tmp
+export SRC_PATH=$PWD/modules/Binutils
+export JOBS=4
+export LIBDIR=$PWD/modules/Libraries
+export KERNELDIR=$PWD/modules/Kernel
+
+if [ ! -d "rootsys" ]; then
+	mkdir rootsys
+	mkdir -p rootsys/usr/
+	mkdir -p rootsys/image
+fi
+
+## Bootstrap libdayos and crt0
+if [ ! -d "dayoslibs-build" ]; then
+	mkdir dayoslibs-build
+fi
+
+cd dayoslibs-build
+
+## Build libdayos
+cmake $LIBDIR/libdayos -DDAYOS_KERNEL_INCLUDE=$KERNELDIR/sys -DCMAKE_INSTALL_PREFIX=$PREFIX -DDISABLE_TESTS=TRUE
+make -j$JOBS
+make install
+
+rm -rf *
+## build crt0
+cmake $LIBDIR/crt0 -DDAYOS_KERNEL_INCLUDE=$KERNELDIR/sys -DCMAKE_INSTALL_PREFIX=$PREFIX
+make -j$JOBS
+make install
+
+rm -rf *
+## build libm
+cmake $LIBDIR/libmath -DDAYOS_KERNEL_INCLUDE=$KERNELDIR/sys -DCMAKE_INSTALL_PREFIX=$PREFIX
+make -j$JOBS
+make install
+
+rm -rf *
+
+cd ..
+
+cp -r $KERNELDIR/sys/* rootsys/usr/include
+if [ ! -d "$BUILD_PATH/build-gcc" ]; then
+	mkdir $BUILD_PATH/build-gcc
+fi
+
+if [ ! -d "$BUILD_PATH/build-binutils" ]; then
+	mkdir $BUILD_PATH/build-binutils
+fi
+
+cd $BUILD_PATH/build-binutils
+$SRC_PATH/binutils-2.25/configure --target=$TARGET --prefix="$PREFIX" --with-sysroot --disable-nls --disable-werror
+make -j$JOBS
+make install
+cd ..
+
+cd $BUILD_PATH/build-gcc
+$SRC_PATH/gcc-5.3.0/configure --target=$TARGET --prefix="$PREFIX" --disable-nls --enable-languages=c,c++ --without-headers --with-sysroot=$PREFIX
+make -j$JOBS
+make install
+cd ..
+
+ln $PREFIX/i686-pc-dayos/lib/libstdc++.a $PREFIX/usr/lib
+ln $PREFIX/i686-pc-dayos/lib/libsupc++.a $PREFIX/usr/lib
+
+#rm -rf $BUILD_PATH/build-gcc
+#rm -rf $BUILD_PATH/build-binutils
+rm -rf dayoslibs-build
